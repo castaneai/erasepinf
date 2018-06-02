@@ -1,13 +1,11 @@
 package main
 
 import (
+	"encoding/binary"
+	"fmt"
+	"io"
 	"log"
 	"os"
-	"encoding/binary"
-	"encoding/hex"
-	"io"
-	"errors"
-	"fmt"
 )
 
 // atomName => padding size
@@ -27,48 +25,34 @@ var boxAtomPaddings = map[string]int64{
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatalf("Usage: ./erasepinf <mp4 filename>")
+		log.Fatalf("Usage: ./erasepinf [MP4FILE...]")
 	}
 
-	filename := os.Args[1]
-	f, err := os.OpenFile(filename, os.O_RDWR, 0644)
-	defer f.Close()
-	if err != nil {
-		log.Fatalln(err)
+	for _, fname := range os.Args[1:] {
+		if err := erasePinf(fname); err != nil {
+			log.Fatalln(err)
+		}
 	}
+}
+
+func erasePinf(filename string) error {
+	f, err := os.OpenFile(filename, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
 
 	atoms, err := readAllAtoms(f)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	pinf, err := searchAtom(atoms, "pinf")
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
-	dumper := hex.Dumper(os.Stdout)
-	defer dumper.Close()
-
-	data, err := pinf.ReadData(f)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	fmt.Println("-------------before-----------------")
-	dumper.Write(data)
-
-	if err := pinf.destroy(f); err != nil {
-		log.Fatalln(err)
-	}
-
-	data, err = pinf.ReadData(f)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	fmt.Println("-------------after-----------------")
-	dumper.Write(data)
+	return pinf.destroy(f)
 }
 
 func searchAtom(atoms map[string]*Atom, target string) (*Atom, error) {
@@ -80,14 +64,14 @@ func searchAtom(atoms map[string]*Atom, target string) (*Atom, error) {
 			return searchAtom(atom.Children, target)
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, fmt.Errorf("atom not found: %s", target)
 }
 
 type Atom struct {
-	Name string
+	Name         string
 	DataStartPos int64
-	DataLen int64
-	Children map[string]*Atom
+	DataLen      int64
+	Children     map[string]*Atom
 }
 
 func (a *Atom) ReadData(r io.ReadSeeker) ([]byte, error) {
@@ -101,7 +85,7 @@ func (a *Atom) ReadData(r io.ReadSeeker) ([]byte, error) {
 	return buf, nil
 }
 
-func (a *Atom) destroy(w io.WriteSeeker) (error) {
+func (a *Atom) destroy(w io.WriteSeeker) error {
 	if _, err := w.Seek(a.DataStartPos, io.SeekStart); err != nil {
 		return err
 	}
@@ -140,7 +124,7 @@ func readAtom(r io.ReadSeeker) (*Atom, error) {
 	name := string(nameb)
 
 	startPos, err := r.Seek(0, io.SeekCurrent)
-	if err !=  nil {
+	if err != nil {
 		return nil, err
 	}
 	dataLen := int64(length - 8)
@@ -160,7 +144,7 @@ func readAtom(r io.ReadSeeker) (*Atom, error) {
 			if err != nil {
 				return nil, err
 			}
-			if cur >= startPos + dataLen {
+			if cur >= startPos+dataLen {
 				break
 			}
 		}
@@ -170,10 +154,10 @@ func readAtom(r io.ReadSeeker) (*Atom, error) {
 		}
 	}
 
-	return &Atom {
-		Name: name,
+	return &Atom{
+		Name:         name,
 		DataStartPos: startPos,
-		DataLen: dataLen,
-		Children: catoms,
+		DataLen:      dataLen,
+		Children:     catoms,
 	}, nil
 }
