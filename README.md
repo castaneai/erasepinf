@@ -1,6 +1,6 @@
 erasepinf
 ==============
-Erasing pinf atom in mp4
+Erasing pinf (+ extra metadata) atom in mp4
 
 ## Install
 

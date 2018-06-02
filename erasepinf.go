@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"os"
+	"fmt"
 )
 
 // atomName => padding size
@@ -17,10 +17,9 @@ var boxAtomPaddings = map[string]int64{
 	"stsd": 8,
 	"stbl": 0,
 	"mp4a": 28,
-
-	// --- in pinf
-	"pinf": 0,
-	"schi": 0,
+	"udta": 0,
+	"meta": 4,
+	"ilst": 0,
 }
 
 func main() {
@@ -29,13 +28,13 @@ func main() {
 	}
 
 	for _, fname := range os.Args[1:] {
-		if err := erasePinf(fname); err != nil {
+		if err := erase(fname); err != nil {
 			log.Fatalln(err)
 		}
 	}
 }
 
-func erasePinf(filename string) error {
+func erase(filename string) error {
 	f, err := os.OpenFile(filename, os.O_RDWR, 0644)
 	if err != nil {
 		return err
@@ -47,12 +46,24 @@ func erasePinf(filename string) error {
 		return err
 	}
 
-	pinf, err := searchAtom(atoms, "pinf")
+	for _, an := range []string{"pinf", "apID", "purd", "ownr"} {
+		if err := eraseAtom(an, atoms, f); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func eraseAtom(atomName string, atoms map[string]*Atom, w io.WriteSeeker) error {
+	atom, err := searchAtom(atoms, atomName)
 	if err != nil {
 		return err
 	}
-
-	return pinf.destroy(f)
+	if atom == nil {
+		return fmt.Errorf("atom not found: %s", atomName)
+	}
+	return atom.destroy(w)
 }
 
 func searchAtom(atoms map[string]*Atom, target string) (*Atom, error) {
@@ -61,10 +72,16 @@ func searchAtom(atoms map[string]*Atom, target string) (*Atom, error) {
 			return atom, nil
 		}
 		if len(atom.Children) > 0 {
-			return searchAtom(atom.Children, target)
+			atom, err := searchAtom(atom.Children, target)
+			if err != nil {
+				return nil, err
+			}
+			if atom != nil {
+				return atom, nil
+			}
 		}
 	}
-	return nil, fmt.Errorf("atom not found: %s", target)
+	return nil, nil
 }
 
 type Atom struct {
