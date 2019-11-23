@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"fmt"
 )
 
 // atomName => padding size
@@ -61,7 +60,8 @@ func eraseAtom(atomName string, atoms map[string]*Atom, w io.WriteSeeker) error 
 		return err
 	}
 	if atom == nil {
-		return fmt.Errorf("atom not found: %s", atomName)
+		log.Printf("atom not found: %s, skipping", atomName)
+		return nil
 	}
 	return atom.destroy(w)
 }
